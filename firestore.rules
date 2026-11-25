@@ -1,0 +1,268 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Shared hardened primitives
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+    function incoming() {
+      return request.resource.data;
+    }
+    function existing() {
+      return resource.data;
+    }
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'displayName', 'createdAt'])
+        && data.keys().hasOnly(['uid', 'displayName', 'photoUrl', 'createdAt'])
+        && isValidId(data.uid)
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80
+        && (!('photoUrl' in data) || (data.photoUrl is string && data.photoUrl.size() <= 500))
+        && data.createdAt is timestamp;
+    }
+
+    function isValidCountdown(data) {
+      return data.keys().hasAll([
+          'id', 'ownerId', 'ownerName', 'title', 'targetIso', 'createdIso',
+          'scope', 'category', 'coverKey', 'shareCode', 'participantIds',
+          'status', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'ownerId', 'ownerName', 'title', 'description', 'targetIso', 'createdIso',
+          'scope', 'category', 'accentColor', 'coverKey', 'shareCode', 'participantIds',
+          'locationName', 'locationAddress', 'locationLat', 'locationLng', 'placeId',
+          'calendarEventId', 'status', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && isValidId(data.ownerId)
+        && data.ownerName is string && data.ownerName.size() >= 1 && data.ownerName.size() <= 80
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 120
+        && (!('description' in data) || (data.description is string && data.description.size() <= 1200))
+        && data.targetIso is string && data.targetIso.size() >= 10 && data.targetIso.size() <= 40
+        && data.createdIso is string && data.createdIso.size() >= 10 && data.createdIso.size() <= 40
+        && data.scope in ['personal', 'collective']
+        && data.category in ['celebration', 'voyage', 'launch', 'focus', 'other']
+        && (!('accentColor' in data) || (data.accentColor is string && data.accentColor.size() <= 20))
+        && data.coverKey in ['celebration', 'voyage', 'launch', 'focus']
+        && data.shareCode is string && data.shareCode.size() >= 4 && data.shareCode.size() <= 16 && data.shareCode.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.participantIds is list && data.participantIds.size() <= 50
+        && (data.participantIds.size() == 0 || data.participantIds[0] is string)
+        && (!('locationName' in data) || (data.locationName is string && data.locationName.size() <= 160))
+        && (!('locationAddress' in data) || (data.locationAddress is string && data.locationAddress.size() <= 240))
+        && (!('locationLat' in data) || (data.locationLat is number && data.locationLat >= -90 && data.locationLat <= 90))
+        && (!('locationLng' in data) || (data.locationLng is number && data.locationLng >= -180 && data.locationLng <= 180))
+        && (!('placeId' in data) || (data.placeId is string && data.placeId.size() <= 160))
+        && (!('calendarEventId' in data) || (data.calendarEventId is string && data.calendarEventId.size() <= 160))
+        && data.status in ['active', 'archived']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidMilestone(data) {
+      return data.keys().hasAll(['id', 'title', 'completed', 'createdBy', 'createdAt'])
+        && data.keys().hasOnly(['id', 'title', 'dueIso', 'completed', 'createdBy', 'createdAt'])
+        && isValidId(data.id)
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 140
+        && (!('dueIso' in data) || (data.dueIso is string && data.dueIso.size() <= 40))
+        && data.completed is bool
+        && isValidId(data.createdBy)
+        && data.createdAt is timestamp;
+    }
+
+    function isValidRsvp(data) {
+      return data.keys().hasAll(['uid', 'displayName', 'status', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'displayName', 'status', 'note', 'updatedAt'])
+        && isValidId(data.uid)
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80
+        && data.status in ['going', 'maybe', 'declined']
+        && (!('note' in data) || (data.note is string && data.note.size() <= 200))
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidMessage(data) {
+      return data.keys().hasAll(['id', 'authorId', 'authorName', 'text', 'createdAt'])
+        && data.keys().hasOnly(['id', 'authorId', 'authorName', 'text', 'reaction', 'createdAt'])
+        && isValidId(data.id)
+        && isValidId(data.authorId)
+        && data.authorName is string && data.authorName.size() >= 1 && data.authorName.size() <= 80
+        && data.text is string && data.text.size() >= 1 && data.text.size() <= 500
+        && (!('reaction' in data) || (data.reaction is string && data.reaction.size() <= 16))
+        && data.createdAt is timestamp;
+    }
+
+    // Users collection (owner-isolated PII protection)
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+      allow list: if false;
+      allow create: if isVerified() && isValidId(userId)
+        && request.auth.uid == userId
+        && isValidUserProfile(incoming())
+        && incoming().uid == request.auth.uid
+        && incoming().createdAt == request.time;
+      allow update: if isVerified() && isValidId(userId)
+        && request.auth.uid == userId
+        && isValidUserProfile(incoming())
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoUrl']);
+      allow delete: if false;
+    }
+
+    // Countdowns collection
+    match /countdowns/{countdownId} {
+      allow get: if isSignedIn() && isValidId(countdownId)
+        && (existing().ownerId == request.auth.uid || existing().scope == 'collective');
+      allow list: if isSignedIn()
+        && (resource.data.ownerId == request.auth.uid || resource.data.scope == 'collective');
+      allow create: if isVerified() && isValidId(countdownId)
+        && isValidCountdown(incoming())
+        && incoming().id == countdownId
+        && incoming().ownerId == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isVerified() && isValidId(countdownId)
+        && isValidCountdown(incoming())
+        && incoming().id == existing().id
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Action 1: Owner edits event details or reactivates archived countdown
+          (existing().ownerId == request.auth.uid
+            && (
+              existing().status != 'archived'
+              || (incoming().status == 'active' && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']))
+            )
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'title', 'description', 'targetIso', 'scope', 'category',
+              'accentColor', 'coverKey', 'locationName', 'locationAddress',
+              'locationLat', 'locationLng', 'placeId', 'calendarEventId',
+              'status', 'updatedAt', 'participantIds'
+            ]))
+          ||
+          // Action 2: Signed-in user joins or leaves a collective event
+          (existing().scope == 'collective'
+            && existing().status == 'active'
+            && incoming().diff(existing()).affectedKeys().hasOnly(['participantIds', 'updatedAt']))
+        );
+      allow delete: if isVerified() && isValidId(countdownId)
+        && existing().ownerId == request.auth.uid;
+
+      // Subcollection: Milestones (Master Gate via parent countdown)
+      match /milestones/{milestoneId} {
+        allow get: if isSignedIn() && isValidId(countdownId) && isValidId(milestoneId)
+          && (
+            get(/databases/$(database)/documents/countdowns/$(countdownId)).data.ownerId == request.auth.uid
+            || get(/databases/$(database)/documents/countdowns/$(countdownId)).data.scope == 'collective'
+          );
+        allow list: if isSignedIn() && isValidId(countdownId)
+          && (
+            get(/databases/$(database)/documents/countdowns/$(countdownId)).data.ownerId == request.auth.uid
+            || get(/databases/$(database)/documents/countdowns/$(countdownId)).data.scope == 'collective'
+          );
+        allow create: if isVerified() && isValidId(countdownId) && isValidId(milestoneId)
+          && isValidMilestone(incoming())
+          && incoming().id == milestoneId
+          && incoming().createdBy == request.auth.uid
+          && incoming().createdAt == request.time
+          && exists(/databases/$(database)/documents/countdowns/$(countdownId))
+          && (
+            get(/databases/$(database)/documents/countdowns/$(countdownId)).data.ownerId == request.auth.uid
+            || (
+              get(/databases/$(database)/documents/countdowns/$(countdownId)).data.scope == 'collective'
+              && request.auth.uid in get(/databases/$(database)/documents/countdowns/$(countdownId)).data.participantIds
+            )
+          );
+        allow update: if isVerified() && isValidId(countdownId) && isValidId(milestoneId)
+          && isValidMilestone(incoming())
+          && incoming().id == existing().id
+          && incoming().createdBy == existing().createdBy
+          && incoming().createdAt == existing().createdAt
+          && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'dueIso', 'completed'])
+          && (
+            get(/databases/$(database)/documents/countdowns/$(countdownId)).data.ownerId == request.auth.uid
+            || (
+              get(/databases/$(database)/documents/countdowns/$(countdownId)).data.scope == 'collective'
+              && request.auth.uid in get(/databases/$(database)/documents/countdowns/$(countdownId)).data.participantIds
+            )
+          );
+        allow delete: if isVerified() && isValidId(countdownId) && isValidId(milestoneId)
+          && (
+            get(/databases/$(database)/documents/countdowns/$(countdownId)).data.ownerId == request.auth.uid
+            || existing().createdBy == request.auth.uid
+          );
+      }
+
+      // Subcollection: RSVPs (Master Gate via parent collective countdown)
+      match /rsvps/{rsvpId} {
+        allow get: if isSignedIn() && isValidId(countdownId) && isValidId(rsvpId)
+          && (
+            get(/databases/$(database)/documents/countdowns/$(countdownId)).data.ownerId == request.auth.uid
+            || get(/databases/$(database)/documents/countdowns/$(countdownId)).data.scope == 'collective'
+          );
+        allow list: if isSignedIn() && isValidId(countdownId)
+          && (
+            get(/databases/$(database)/documents/countdowns/$(countdownId)).data.ownerId == request.auth.uid
+            || get(/databases/$(database)/documents/countdowns/$(countdownId)).data.scope == 'collective'
+          );
+        allow create: if isVerified() && isValidId(countdownId) && isValidId(rsvpId)
+          && rsvpId == request.auth.uid
+          && isValidRsvp(incoming())
+          && incoming().uid == request.auth.uid
+          && incoming().updatedAt == request.time
+          && exists(/databases/$(database)/documents/countdowns/$(countdownId))
+          && get(/databases/$(database)/documents/countdowns/$(countdownId)).data.scope == 'collective';
+        allow update: if isVerified() && isValidId(countdownId) && isValidId(rsvpId)
+          && rsvpId == request.auth.uid
+          && isValidRsvp(incoming())
+          && incoming().uid == existing().uid
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'status', 'note', 'updatedAt'])
+          && get(/databases/$(database)/documents/countdowns/$(countdownId)).data.scope == 'collective';
+        allow delete: if isVerified() && isValidId(countdownId) && isValidId(rsvpId)
+          && rsvpId == request.auth.uid;
+      }
+
+      // Subcollection: Collective Guestbook Messages
+      match /messages/{messageId} {
+        allow get: if isSignedIn() && isValidId(countdownId) && isValidId(messageId)
+          && (
+            get(/databases/$(database)/documents/countdowns/$(countdownId)).data.ownerId == request.auth.uid
+            || get(/databases/$(database)/documents/countdowns/$(countdownId)).data.scope == 'collective'
+          );
+        allow list: if isSignedIn() && isValidId(countdownId)
+          && (
+            get(/databases/$(database)/documents/countdowns/$(countdownId)).data.ownerId == request.auth.uid
+            || get(/databases/$(database)/documents/countdowns/$(countdownId)).data.scope == 'collective'
+          );
+        allow create: if isVerified() && isValidId(countdownId) && isValidId(messageId)
+          && isValidMessage(incoming())
+          && incoming().id == messageId
+          && incoming().authorId == request.auth.uid
+          && incoming().createdAt == request.time
+          && exists(/databases/$(database)/documents/countdowns/$(countdownId))
+          && (
+            get(/databases/$(database)/documents/countdowns/$(countdownId)).data.ownerId == request.auth.uid
+            || get(/databases/$(database)/documents/countdowns/$(countdownId)).data.scope == 'collective'
+          );
+        allow update: if false;
+        allow delete: if isVerified() && isValidId(countdownId) && isValidId(messageId)
+          && (
+            existing().authorId == request.auth.uid
+            || get(/databases/$(database)/documents/countdowns/$(countdownId)).data.ownerId == request.auth.uid
+          );
+      }
+    }
+  }
+}

@@ -1,0 +1,277 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Private user profile and preferences.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "photoUrl": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "displayName", "createdAt"]
+    },
+    "CountdownEvent": {
+      "title": "CountdownEvent",
+      "description": "Personal or collective countdown event with optional venue coordinates and calendar link.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 1200
+        },
+        "targetIso": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 40
+        },
+        "createdIso": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 40
+        },
+        "scope": {
+          "type": "string",
+          "enum": ["personal", "collective"]
+        },
+        "category": {
+          "type": "string",
+          "enum": ["celebration", "voyage", "launch", "focus", "other"]
+        },
+        "accentColor": {
+          "type": "string",
+          "maxLength": 20
+        },
+        "coverKey": {
+          "type": "string",
+          "enum": ["celebration", "voyage", "launch", "focus"]
+        },
+        "shareCode": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 16,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "participantIds": {
+          "type": "array",
+          "description": "Bounded list of participant UIDs (max 50)."
+        },
+        "locationName": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "locationAddress": {
+          "type": "string",
+          "maxLength": 240
+        },
+        "locationLat": {
+          "type": "number"
+        },
+        "locationLng": {
+          "type": "number"
+        },
+        "placeId": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "calendarEventId": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "archived"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "ownerId",
+        "ownerName",
+        "title",
+        "targetIso",
+        "createdIso",
+        "scope",
+        "category",
+        "coverKey",
+        "shareCode",
+        "participantIds",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Milestone": {
+      "title": "Milestone",
+      "description": "Preparation milestone or checklist step linked to a countdown event.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 140
+        },
+        "dueIso": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "completed": {
+          "type": "boolean"
+        },
+        "createdBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "title", "completed", "createdBy", "createdAt"]
+    },
+    "RsvpEntry": {
+      "title": "RsvpEntry",
+      "description": "Participant RSVP status for a collective countdown.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "status": {
+          "type": "string",
+          "enum": ["going", "maybe", "declined"]
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "displayName", "status", "updatedAt"]
+    },
+    "GuestMessage": {
+      "title": "GuestMessage",
+      "description": "Collective guestbook message or cheer posted on an event.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "authorId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "authorName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "reaction": {
+          "type": "string",
+          "maxLength": 16
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "authorId", "authorName", "text", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Private user profile isolated to its owner."
+    },
+    "/countdowns/{countdownId}": {
+      "schema": { "$ref": "#/entities/CountdownEvent" },
+      "description": "Personal and collective countdown events."
+    },
+    "/countdowns/{countdownId}/milestones/{milestoneId}": {
+      "schema": { "$ref": "#/entities/Milestone" },
+      "description": "Milestones/checklists under a countdown event."
+    },
+    "/countdowns/{countdownId}/rsvps/{rsvpId}": {
+      "schema": { "$ref": "#/entities/RsvpEntry" },
+      "description": "Participant RSVPs for collective countdowns."
+    },
+    "/countdowns/{countdownId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/GuestMessage" },
+      "description": "Collective guestbook messages under a countdown event."
+    }
+  }
+}

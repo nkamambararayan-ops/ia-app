@@ -1,0 +1,6 @@
+{
+  "name": "ChronoSphere",
+  "description": "Générateur de comptes à rebours intelligents pour événements personnels et collectifs avec carte interactive, vue 3D, calendrier Google et collaboration temps réel.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
