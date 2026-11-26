@@ -59,6 +59,12 @@ interface RoomMember {
   ws: WebSocket;
   clientId: string;
   displayName: string;
+  location?: {
+    lat: number;
+    lng: number;
+    accuracy?: number;
+    updatedAtMs: number;
+  };
 }
 
 async function startServer() {
@@ -123,6 +129,27 @@ async function startServer() {
     });
   }
 
+  function broadcastLocations(roomId: string) {
+    const members = rooms.get(roomId);
+    const locations = members
+      ? Array.from(members.values())
+          .filter((m) => Boolean(m.location))
+          .map((m) => ({
+            uid: m.clientId,
+            displayName: m.displayName,
+            lat: m.location!.lat,
+            lng: m.location!.lng,
+            accuracy: m.location!.accuracy,
+            updatedAtMs: m.location!.updatedAtMs,
+          }))
+      : [];
+    broadcastToRoom(roomId, {
+      type: 'locations_snapshot',
+      roomId,
+      locations,
+    });
+  }
+
   wssRooms.on('connection', (ws) => {
     let currentRoomId: string | null = null;
     let currentClientId = '';
@@ -138,9 +165,14 @@ async function startServer() {
 
           if (currentRoomId && currentClientId) {
             const prev = rooms.get(currentRoomId);
+            const prevMember = prev?.get(currentClientId);
+            const hadLoc = Boolean(prevMember?.location);
             prev?.delete(currentClientId);
             if (prev && prev.size === 0) rooms.delete(currentRoomId);
-            else broadcastPresence(currentRoomId);
+            else {
+              broadcastPresence(currentRoomId);
+              if (hadLoc) broadcastLocations(currentRoomId);
+            }
           }
 
           currentRoomId = roomId;
@@ -158,6 +190,41 @@ async function startServer() {
           }
           rooms.get(roomId)!.set(currentClientId, { ws, clientId: currentClientId, displayName });
           broadcastPresence(roomId);
+          broadcastLocations(roomId);
+        } else if (msg.type === 'location_update' && currentRoomId && currentClientId) {
+          const lat = typeof msg.lat === 'number' ? msg.lat : Number.NaN;
+          const lng = typeof msg.lng === 'number' ? msg.lng : Number.NaN;
+          if (
+            !Number.isFinite(lat) ||
+            !Number.isFinite(lng) ||
+            lat < -90 ||
+            lat > 90 ||
+            lng < -180 ||
+            lng > 180
+          ) {
+            return;
+          }
+          const rawAccuracy = typeof msg.accuracy === 'number' ? msg.accuracy : undefined;
+          const accuracy =
+            rawAccuracy !== undefined && Number.isFinite(rawAccuracy) && rawAccuracy >= 0
+              ? Math.min(100000, Math.round(rawAccuracy))
+              : undefined;
+          const member = rooms.get(currentRoomId)?.get(currentClientId);
+          if (member) {
+            member.location = {
+              lat,
+              lng,
+              accuracy,
+              updatedAtMs: Date.now(),
+            };
+            broadcastLocations(currentRoomId);
+          }
+        } else if (msg.type === 'location_stop' && currentRoomId && currentClientId) {
+          const member = rooms.get(currentRoomId)?.get(currentClientId);
+          if (member && member.location) {
+            delete member.location;
+            broadcastLocations(currentRoomId);
+          }
         } else if (msg.type === 'reaction' && currentRoomId) {
           const allowed = ['🎉', '🔥', '👏', '✨', '❤️', '🚀'];
           const emoji = allowed.includes(msg.emoji) ? msg.emoji : '✨';
@@ -193,11 +260,14 @@ async function startServer() {
     ws.on('close', () => {
       if (currentRoomId && currentClientId) {
         const members = rooms.get(currentRoomId);
+        const departing = members?.get(currentClientId);
+        const hadLoc = Boolean(departing?.location);
         members?.delete(currentClientId);
         if (members && members.size === 0) {
           rooms.delete(currentRoomId);
         } else {
           broadcastPresence(currentRoomId);
+          if (hadLoc) broadcastLocations(currentRoomId);
         }
       }
     });

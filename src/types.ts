@@ -56,6 +56,16 @@ export interface GuestMessage {
   createdAt?: unknown;
 }
 
+export interface ParticipantLocation {
+  uid: string;
+  displayName: string;
+  lat: number;
+  lng: number;
+  accuracy?: number;
+  updatedAt?: unknown;
+  updatedAtMs?: number;
+}
+
 export interface TimeRemaining {
   totalMs: number;
   days: number;

@@ -11,8 +11,18 @@ export interface ReactionBurst {
   displayName: string;
 }
 
+export interface PeerLocation {
+  uid: string;
+  displayName: string;
+  lat: number;
+  lng: number;
+  accuracy?: number;
+  updatedAtMs: number;
+}
+
 export function useRealtimeRoom(roomId: string | null, displayName: string, clientId: string) {
   const [participants, setParticipants] = useState<PresenceParticipant[]>([]);
+  const [peerLocations, setPeerLocations] = useState<PeerLocation[]>([]);
   const [connected, setConnected] = useState(false);
   const [reactions, setReactions] = useState<ReactionBurst[]>([]);
   const [lastActivity, setLastActivity] = useState<string | null>(null);
@@ -22,6 +32,7 @@ export function useRealtimeRoom(roomId: string | null, displayName: string, clie
   useEffect(() => {
     if (!roomId) {
       setParticipants([]);
+      setPeerLocations([]);
       setConnected(false);
       return;
     }
@@ -54,6 +65,8 @@ export function useRealtimeRoom(roomId: string | null, displayName: string, clie
           const msg = JSON.parse(ev.data);
           if (msg.type === 'presence_update' && msg.roomId === roomId) {
             setParticipants(Array.isArray(msg.participants) ? msg.participants : []);
+          } else if (msg.type === 'locations_snapshot' && msg.roomId === roomId) {
+            setPeerLocations(Array.isArray(msg.locations) ? msg.locations : []);
           } else if (msg.type === 'reaction_burst' && msg.roomId === roomId) {
             const burst: ReactionBurst = {
               id: String(msg.id || Date.now()),
@@ -129,12 +142,38 @@ export function useRealtimeRoom(roomId: string | null, displayName: string, clie
     [displayName]
   );
 
+  const sendLocationUpdate = useCallback((lat: number, lng: number, accuracy?: number) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(
+        JSON.stringify({
+          type: 'location_update',
+          lat,
+          lng,
+          accuracy,
+        })
+      );
+    }
+  }, []);
+
+  const sendLocationStop = useCallback(() => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(
+        JSON.stringify({
+          type: 'location_stop',
+        })
+      );
+    }
+  }, []);
+
   return {
     participants,
+    peerLocations,
     connected,
     reactions,
     lastActivity,
     sendReaction,
     notifyActivity,
+    sendLocationUpdate,
+    sendLocationStop,
   };
 }

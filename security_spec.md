@@ -4,7 +4,7 @@
 1. User profiles (`/users/{userId}`) contain private profile attributes and are strictly readable and writable only by the owning authenticated user (`request.auth.uid == userId`).
 2. Personal countdowns (`scope == 'personal'`) are strictly isolated to `ownerId == request.auth.uid` for both `get` and `list`.
 3. Collective countdowns (`scope == 'collective'`) are readable by authenticated users (`get` or `list` filtered on `scope == 'collective'` or `ownerId == request.auth.uid`), while structural edits are reserved for `ownerId` and non-owners may only join/leave via `participantIds` on active collective events.
-4. Subcollections (`milestones`, `rsvps`, `messages`) enforce the Master Gate by inspecting the parent `/countdowns/{countdownId}` document via `get()`.
+4. Subcollections (`milestones`, `rsvps`, `messages`, `locations`) enforce the Master Gate by inspecting the parent `/countdowns/{countdownId}` document via `get()`. Live `locations` are strictly restricted to active `collective` events and only readable/writable by the event owner or registered `participantIds`, with users only able to write/update their own `locId == request.auth.uid` document.
 5. Archived countdowns (`status == 'archived'`) block further edits by non-owners and enforce immutable `ownerId` and `createdAt`.
 6. Every string field enforces `.size()` limits, every ID enforces `^[a-zA-Z0-9_\-]+$` (max 128 chars), and every timestamp enforces `request.time`.
 
@@ -19,5 +19,5 @@
 8. **Private countdown scraping**: Non-owner attempting `get` or `list` on `scope: 'personal'` -> `PERMISSION_DENIED`.
 9. **Client timestamp forgery**: `createdAt` != `request.time` -> `PERMISSION_DENIED`.
 10. **Immutable field mutation**: Non-owner or owner attempting to change `ownerId` or `createdAt` -> `PERMISSION_DENIED`.
-11. **RSVP impersonation**: Writing `/rsvps/victimUid` as `attackerUid` -> `PERMISSION_DENIED`.
-12. **Subcollection orphan/leak**: Reading/writing milestones under a `personal` countdown owned by another user -> `PERMISSION_DENIED`.
+11. **RSVP / Location impersonation**: Writing `/rsvps/victimUid` or `/locations/victimUid` as `attackerUid` -> `PERMISSION_DENIED`.
+12. **Subcollection orphan/leak**: Reading/writing milestones or locations under an event where the user is not a member or that is `personal` -> `PERMISSION_DENIED`.

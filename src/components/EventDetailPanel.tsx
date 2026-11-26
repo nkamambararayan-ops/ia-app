@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   Archive,
@@ -42,7 +42,9 @@ import { ChronoScene3D } from './ChronoScene3D';
 import { EventMapPanel } from './EventMapPanel';
 import { EventIntelligencePanel, MapsGroundingPanel } from './EventIntelligencePanel';
 import { LiveVoicePanel } from './LiveVoicePanel';
+import { NearbyParticipantsCard, RadiusFilterOption } from './NearbyParticipantsCard';
 import { useRealtimeRoom } from '../hooks/useRealtimeRoom';
+import { useCollectiveLocations } from '../hooks/useCollectiveLocations';
 
 type DetailTab = 'overview' | 'milestones' | 'collective' | 'map' | 'studio' | 'voice';
 
@@ -130,26 +132,65 @@ export const EventDetailPanel: React.FC<EventDetailPanelProps> = ({
   const [aiInviteText, setAiInviteText] = useState<string | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
 
-  // Collective RSVP & guestbook state
+  // Collective RSVP, guestbook & proximity state
   const [rsvpNote, setRsvpNote] = useState('');
   const [messageText, setMessageText] = useState('');
   const [postingMsg, setPostingMsg] = useState(false);
+  const [radiusMeters, setRadiusMeters] = useState<RadiusFilterOption>(null);
+  const [focusedParticipantUid, setFocusedParticipantUid] = useState<string | null>(null);
+
+  useEffect(() => {
+    setFocusedParticipantUid(null);
+  }, [event.id]);
 
   const isOwner = event.ownerId === currentUserId || Boolean(event.isLocalOnly);
   const isParticipant = event.participantIds.includes(currentUserId);
+  const isMember = isOwner || isParticipant;
 
   const {
     participants: onlinePeers,
+    peerLocations,
     connected: wsConnected,
     reactions,
     lastActivity,
     sendReaction,
     notifyActivity,
+    sendLocationUpdate,
+    sendLocationStop,
   } = useRealtimeRoom(
     event.scope === 'collective' ? event.id : null,
     currentUserName,
     currentUserId
   );
+
+  const {
+    geoSupported,
+    myPosition,
+    sharing: sharingLocation,
+    locating: locatingMe,
+    geoError,
+    participantsWithLocation,
+    locateMeOnce,
+    startSharing,
+    stopSharing,
+  } = useCollectiveLocations({
+    event,
+    currentUserId,
+    currentUserName,
+    isAuthenticated,
+    isMember,
+    peerLocations,
+    wsConnected,
+    sendLocationUpdate,
+    sendLocationStop,
+    onEnsureMember: () => onJoinCollective(event),
+  });
+
+  const filteredMapParticipants = participantsWithLocation.filter((p) => {
+    if (p.isSelf) return true;
+    if (radiusMeters === null || p.distanceMeters === null) return true;
+    return p.distanceMeters <= radiusMeters;
+  });
 
   const handleCopyShare = async () => {
     const url = `${window.location.origin}/?event=${encodeURIComponent(event.id)}&code=${encodeURIComponent(event.shareCode)}`;
@@ -687,6 +728,30 @@ export const EventDetailPanel: React.FC<EventDetailPanelProps> = ({
                   )}
                 </div>
 
+                {/* Nearby Collective Participants & Live Location Sharing */}
+                <NearbyParticipantsCard
+                  nowMs={nowMs}
+                  geoSupported={geoSupported}
+                  myPosition={myPosition}
+                  sharing={sharingLocation}
+                  locating={locatingMe}
+                  geoError={geoError}
+                  participantsWithLocation={participantsWithLocation}
+                  radiusMeters={radiusMeters}
+                  onChangeRadius={setRadiusMeters}
+                  onLocateMe={locateMeOnce}
+                  onStartSharing={() => void startSharing()}
+                  onStopSharing={() => void stopSharing()}
+                  onFocusOnMap={(p) => {
+                    setFocusedParticipantUid(p.uid);
+                    setActiveTab('map');
+                  }}
+                  isMember={isMember}
+                  isAuthenticated={isAuthenticated}
+                  isLocalOnly={event.isLocalOnly}
+                  onJoinCollective={() => void onJoinCollective(event)}
+                />
+
                 {/* RSVP Section */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <div className="space-y-3">
@@ -820,7 +885,34 @@ export const EventDetailPanel: React.FC<EventDetailPanelProps> = ({
               events={[event]}
               focusedEvent={event}
               mapsAvailable={mapsAvailable}
+              myPosition={myPosition}
+              participantLocations={
+                event.scope === 'collective' ? filteredMapParticipants : []
+              }
+              focusedParticipantUid={focusedParticipantUid}
+              onSelectParticipant={(p) => setFocusedParticipantUid(p.uid)}
             />
+            {event.scope === 'collective' && (
+              <NearbyParticipantsCard
+                nowMs={nowMs}
+                geoSupported={geoSupported}
+                myPosition={myPosition}
+                sharing={sharingLocation}
+                locating={locatingMe}
+                geoError={geoError}
+                participantsWithLocation={participantsWithLocation}
+                radiusMeters={radiusMeters}
+                onChangeRadius={setRadiusMeters}
+                onLocateMe={locateMeOnce}
+                onStartSharing={() => void startSharing()}
+                onStopSharing={() => void stopSharing()}
+                onFocusOnMap={(p) => setFocusedParticipantUid(p.uid)}
+                isMember={isMember}
+                isAuthenticated={isAuthenticated}
+                isLocalOnly={event.isLocalOnly}
+                onJoinCollective={() => void onJoinCollective(event)}
+              />
+            )}
             {aiEnabled && (
               <MapsGroundingPanel
                 event={event}

@@ -250,6 +250,38 @@
         }
       },
       "required": ["id", "authorId", "authorName", "text", "createdAt"]
+    },
+    "ParticipantLocation": {
+      "title": "ParticipantLocation",
+      "description": "Opt-in live geographic position shared by a participant inside a collective countdown event.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "lat": {
+          "type": "number"
+        },
+        "lng": {
+          "type": "number"
+        },
+        "accuracy": {
+          "type": "number"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "displayName", "lat", "lng", "updatedAt"]
     }
   },
   "firestore": {
@@ -272,6 +304,10 @@
     "/countdowns/{countdownId}/messages/{messageId}": {
       "schema": { "$ref": "#/entities/GuestMessage" },
       "description": "Collective guestbook messages under a countdown event."
+    },
+    "/countdowns/{countdownId}/locations/{locId}": {
+      "schema": { "$ref": "#/entities/ParticipantLocation" },
+      "description": "Opt-in live locations shared by participants of a collective countdown event."
     }
   }
 }

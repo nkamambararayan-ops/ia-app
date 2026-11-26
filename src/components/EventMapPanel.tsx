@@ -10,6 +10,8 @@ import {
 import { MapPin, Navigation, Search, X } from 'lucide-react';
 import { CountdownEvent } from '../types';
 import { formatShortDate } from '../lib/time';
+import { formatDistanceFr, formatRelativeAgeFr, GeoPoint } from '../lib/geo';
+import { NearbyParticipant } from '../hooks/useCollectiveLocations';
 
 export interface SelectedPlacePayload {
   locationName: string;
@@ -211,11 +213,77 @@ const EventMarkerItem: React.FC<EventMarkerItemProps> = ({ event, selected, onSe
   );
 };
 
+interface ParticipantMarkerItemProps {
+  participant: NearbyParticipant;
+  selected: boolean;
+  onSelect: (participant: NearbyParticipant) => void;
+}
+
+const ParticipantMarkerItem: React.FC<ParticipantMarkerItemProps> = ({
+  participant,
+  selected,
+  onSelect,
+}) => {
+  const [markerRef, marker] = useAdvancedMarkerRef();
+  const [infoOpen, setInfoOpen] = useState(selected);
+
+  useEffect(() => {
+    setInfoOpen(selected);
+  }, [selected]);
+
+  const initial = participant.displayName.trim().charAt(0).toUpperCase() || 'P';
+
+  return (
+    <>
+      <AdvancedMarker
+        ref={markerRef}
+        position={{ lat: participant.lat, lng: participant.lng }}
+        onClick={() => {
+          setInfoOpen(true);
+          onSelect(participant);
+        }}
+        title={`${participant.displayName}${participant.isSelf ? ' (Vous)' : ''}`}
+      >
+        <div
+          className={`flex items-center justify-center w-9 h-9 rounded-full border-2 border-white shadow-lg text-xs font-semibold text-white transition-transform ${
+            participant.isSelf ? 'bg-[#007AFF]' : 'bg-emerald-600'
+          } ${selected ? 'scale-115 ring-4 ring-emerald-400/40' : ''}`}
+        >
+          {initial}
+        </div>
+      </AdvancedMarker>
+
+      {infoOpen && marker && (
+        <InfoWindow anchor={marker} onCloseClick={() => setInfoOpen(false)} maxWidth={230}>
+          <div className="p-1 text-slate-900 space-y-1">
+            <div className="font-semibold text-sm">
+              {participant.displayName}
+              {participant.isSelf ? ' (Vous)' : ''}
+            </div>
+            {participant.distanceMeters !== null && !participant.isSelf && (
+              <div className="text-xs font-medium text-emerald-700">
+                À {formatDistanceFr(participant.distanceMeters)} de vous
+              </div>
+            )}
+            <div className="text-[11px] text-slate-500">
+              Mis à jour {formatRelativeAgeFr(participant.updatedAtMs ?? Date.now(), Date.now())}
+            </div>
+          </div>
+        </InfoWindow>
+      )}
+    </>
+  );
+};
+
 interface EventMapPanelProps {
   events: CountdownEvent[];
   focusedEvent: CountdownEvent | null;
   mapsAvailable: boolean;
   onSelectEvent?: (event: CountdownEvent) => void;
+  myPosition?: GeoPoint | null;
+  participantLocations?: NearbyParticipant[];
+  focusedParticipantUid?: string | null;
+  onSelectParticipant?: (participant: NearbyParticipant) => void;
 }
 
 export const EventMapPanel: React.FC<EventMapPanelProps> = ({
@@ -223,19 +291,36 @@ export const EventMapPanel: React.FC<EventMapPanelProps> = ({
   focusedEvent,
   mapsAvailable,
   onSelectEvent,
+  myPosition = null,
+  participantLocations = [],
+  focusedParticipantUid = null,
+  onSelectParticipant,
 }) => {
   const geoEvents = events.filter(
     (e) => typeof e.locationLat === 'number' && typeof e.locationLng === 'number'
   );
 
-  const center =
-    focusedEvent &&
-    typeof focusedEvent.locationLat === 'number' &&
-    typeof focusedEvent.locationLng === 'number'
-      ? { lat: focusedEvent.locationLat, lng: focusedEvent.locationLng }
-      : geoEvents[0]
-      ? { lat: geoEvents[0].locationLat!, lng: geoEvents[0].locationLng! }
-      : { lat: 48.8566, lng: 2.3522 };
+  const focusedParticipant = focusedParticipantUid
+    ? participantLocations.find((p) => p.uid === focusedParticipantUid) ?? null
+    : null;
+
+  const hasSelfMarkerInList = participantLocations.some((p) => p.isSelf);
+
+  const center = focusedParticipant
+    ? { lat: focusedParticipant.lat, lng: focusedParticipant.lng }
+    : myPosition && !focusedEvent?.locationLat && participantLocations.length > 0
+      ? { lat: myPosition.lat, lng: myPosition.lng }
+      : focusedEvent &&
+          typeof focusedEvent.locationLat === 'number' &&
+          typeof focusedEvent.locationLng === 'number'
+        ? { lat: focusedEvent.locationLat, lng: focusedEvent.locationLng }
+        : participantLocations[0]
+          ? { lat: participantLocations[0].lat, lng: participantLocations[0].lng }
+          : geoEvents[0]
+            ? { lat: geoEvents[0].locationLat!, lng: geoEvents[0].locationLng! }
+            : myPosition
+              ? { lat: myPosition.lat, lng: myPosition.lng }
+              : { lat: 48.8566, lng: 2.3522 };
 
   if (!mapsAvailable) {
     return (
@@ -260,7 +345,7 @@ export const EventMapPanel: React.FC<EventMapPanelProps> = ({
           mapId="DEMO_MAP_ID"
           defaultCenter={center}
           center={center}
-          defaultZoom={focusedEvent?.locationLat ? 13 : 5}
+          defaultZoom={focusedEvent?.locationLat || participantLocations.length > 0 || myPosition ? 13 : 5}
           gestureHandling="greedy"
           internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
           style={{ width: '100%', height: '100%' }}
@@ -269,8 +354,26 @@ export const EventMapPanel: React.FC<EventMapPanelProps> = ({
             <EventMarkerItem
               key={ev.id}
               event={ev}
-              selected={focusedEvent?.id === ev.id}
+              selected={focusedEvent?.id === ev.id && !focusedParticipant}
               onSelect={(selectedEv) => onSelectEvent?.(selectedEv)}
+            />
+          ))}
+
+          {myPosition && !hasSelfMarkerInList && (
+            <AdvancedMarker
+              position={{ lat: myPosition.lat, lng: myPosition.lng }}
+              title="Votre position actuelle"
+            >
+              <div className="w-5 h-5 rounded-full bg-[#007AFF] border-[3px] border-white shadow-md ring-4 ring-[#007AFF]/25" />
+            </AdvancedMarker>
+          )}
+
+          {participantLocations.map((participant) => (
+            <ParticipantMarkerItem
+              key={participant.uid}
+              participant={participant}
+              selected={focusedParticipantUid === participant.uid}
+              onSelect={(p) => onSelectParticipant?.(p)}
             />
           ))}
         </GoogleMap>
